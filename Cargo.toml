@@ -1,0 +1,3 @@
+[workspace]
+
+members = [ "c8rs","c8rs-core", "c8rs-disasm", "c8rs-tui"]

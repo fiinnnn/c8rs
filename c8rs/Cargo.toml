@@ -1,0 +1,13 @@
+[package]
+name = "c8rs"
+version = "0.1.0"
+edition = "2021"
+default-run = "c8rs"
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+c8rs-core = { path = "../c8rs-core" }
+c8rs-disasm = { path = "../c8rs-disasm" }
+c8rs-tui = { path = "../c8rs-tui" }
+tokio = { version = "1.39", features = ["full"] }
