@@ -1,4 +1,7 @@
-use ratatui::{prelude::*, widgets::Block};
+use ratatui::{
+    prelude::*,
+    widgets::{block, Block},
+};
 
 use crate::app::AppState;
 
@@ -15,6 +18,8 @@ impl Component for DisplayComponent {
     }
 
     fn render(&mut self, f: &mut Frame<'_>, area: Rect, state: &AppState) {
+        let start = std::time::Instant::now();
+
         let border_style = if self.focused {
             Style::default().fg(Color::Green)
         } else {
@@ -30,7 +35,6 @@ impl Component for DisplayComponent {
         let (width, height) = display.get_dimensions();
         let pixels = display.get_pixels();
 
-        f.render_widget(outer_block, area);
         f.render_widget(
             DisplayWidget {
                 pixels: &pixels,
@@ -38,6 +42,17 @@ impl Component for DisplayComponent {
                 height,
             },
             block_area,
+        );
+
+        f.render_widget(
+            outer_block.title(
+                block::Title::from(format!(
+                    "[render: {:.02} ms]",
+                    start.elapsed().as_secs_f64() * 1000.0
+                ))
+                .alignment(Alignment::Right),
+            ),
+            area,
         );
     }
 

@@ -78,6 +78,8 @@ impl Component for DisassemblyComponent {
     }
 
     fn render(&mut self, f: &mut Frame<'_>, area: Rect, state: &AppState) {
+        let start = std::time::Instant::now();
+
         let border_style = if self.focused {
             Style::default().fg(Color::Green)
         } else {
@@ -149,8 +151,18 @@ impl Component for DisassemblyComponent {
         let end_addr = (start_addr + block_area.height * 2) & 0xFFFE;
         let lines = (start_addr..end_addr).step_by(2).map(format_addr);
 
-        f.render_widget(outer_block, area);
         f.render_widget(Paragraph::new(Text::from_iter(lines)), block_area);
+
+        f.render_widget(
+            outer_block.title(
+                block::Title::from(format!(
+                    "[render: {:.02}ms]",
+                    start.elapsed().as_secs_f64() * 1000.0
+                ))
+                .alignment(Alignment::Right),
+            ),
+            area,
+        );
     }
 
     fn has_focus(&self) -> bool {

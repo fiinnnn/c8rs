@@ -19,6 +19,8 @@ impl Component for CpuComponent {
     }
 
     fn render(&mut self, f: &mut Frame<'_>, area: Rect, state: &AppState) {
+        let start = std::time::Instant::now();
+
         let border_style = if self.focused {
             Style::default().fg(Color::Green)
         } else {
@@ -38,9 +40,19 @@ impl Component for CpuComponent {
             unreachable!()
         };
 
-        f.render_widget(outer_block, area);
         f.render_widget(RegisterWidget { state }, reg_area);
         f.render_widget(StackWidget { state }, stack_area);
+
+        f.render_widget(
+            outer_block.title(
+                block::Title::from(format!(
+                    "[render: {:.02}ms]",
+                    start.elapsed().as_secs_f64() * 1000.0
+                ))
+                .alignment(Alignment::Right),
+            ),
+            area,
+        )
     }
 
     fn has_focus(&self) -> bool {

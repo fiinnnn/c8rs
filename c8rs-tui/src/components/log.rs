@@ -1,5 +1,8 @@
 use crossterm::event::{KeyCode, KeyEvent};
-use ratatui::{prelude::*, widgets::Block};
+use ratatui::{
+    prelude::*,
+    widgets::{block, Block},
+};
 use tui_logger::TuiLoggerWidget;
 
 use crate::app::AppState;
@@ -26,15 +29,18 @@ impl Component for LogComponent {
     }
 
     fn render(&mut self, f: &mut Frame<'_>, area: Rect, _: &AppState) {
+        let start = std::time::Instant::now();
+
         let border_style = if self.focused {
             Style::default().fg(Color::Green)
         } else {
             Style::default()
         };
 
+        let outer_block = Block::bordered().title("[5: Log]").style(border_style);
+
         f.render_widget(
             TuiLoggerWidget::default()
-                .block(Block::bordered().title("[5: Log]").style(border_style))
                 .output_separator('|')
                 .output_timestamp(Some("%H:%M:%S%.3f".to_string()))
                 .style_error(Style::default().fg(Color::Red))
@@ -43,8 +49,19 @@ impl Component for LogComponent {
                 .style_trace(Style::default().fg(Color::Magenta))
                 .style_info(Style::default().fg(Color::Cyan))
                 .state(&self.state),
-            area,
+            outer_block.inner(area),
         );
+
+        f.render_widget(
+            outer_block.title(
+                block::Title::from(format!(
+                    "[render: {:.02}ms]",
+                    start.elapsed().as_secs_f64() * 1000.0
+                ))
+                .alignment(Alignment::Right),
+            ),
+            area,
+        )
     }
 
     fn has_focus(&self) -> bool {

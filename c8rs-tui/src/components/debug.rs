@@ -1,6 +1,9 @@
 use c8rs_core::{DebugCommand, EmulatorCommand};
 use crossterm::event::{KeyCode, KeyEvent};
-use ratatui::{prelude::*, widgets::Block};
+use ratatui::{
+    prelude::*,
+    widgets::{block, Block},
+};
 
 use crate::app::AppState;
 
@@ -39,6 +42,8 @@ impl Component for DebuggerComponent {
     }
 
     fn render(&mut self, f: &mut ratatui::Frame<'_>, area: Rect, state: &AppState) {
+        let start = std::time::Instant::now();
+
         let border_style = if self.focused {
             Style::default().fg(Color::Green)
         } else {
@@ -71,13 +76,23 @@ impl Component for DebuggerComponent {
         let input_line = Line::from(self.input.to_string());
         let cursor_pos = Position::new(input_area.x + self.cursor_pos as u16, input_area.y);
 
-        f.render_widget(outer_block, area);
         f.render_widget(history, history_area);
         f.render_widget(input_line, input_area);
 
         if self.focused {
             f.set_cursor_position(cursor_pos);
         }
+
+        f.render_widget(
+            outer_block.title(
+                block::Title::from(format!(
+                    "[render: {:.02}ms]",
+                    start.elapsed().as_secs_f64() * 1000.0
+                ))
+                .alignment(Alignment::Right),
+            ),
+            area,
+        );
     }
 
     fn has_focus(&self) -> bool {

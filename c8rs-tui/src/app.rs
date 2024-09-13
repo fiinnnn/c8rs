@@ -67,12 +67,10 @@ impl App {
         let cancellation_token = self.cancellation_token.clone();
         tokio::spawn(async move {
             let mut tick_interval = tokio::time::interval(Duration::from_secs_f64(1.0 / 4.0));
-            let mut render_interval = tokio::time::interval(Duration::from_secs_f64(1.0 / 60.0));
             let mut event_stream = crossterm::event::EventStream::new();
 
             loop {
                 let tick_delay = tick_interval.tick();
-                let render_delay = render_interval.tick();
                 let event = event_stream.next().fuse();
 
                 tokio::select! {
@@ -82,9 +80,6 @@ impl App {
                     _ = tick_delay => {
                         event_tx.send(AppEvent::Tick).unwrap();
                     },
-                    _ = render_delay => {
-                        event_tx.send(AppEvent::Render).unwrap();
-                    }
                     event_opt = event => {
                         match event_opt {
                             Some(Ok(event)) => {
@@ -108,17 +103,22 @@ impl App {
             }
         });
 
-        while let Some(event) = event_rx.recv().await {
-            match event {
-                AppEvent::Tick => (),
-                AppEvent::Render => {
-                    if let Err(err) = terminal.draw(|frame| self.render(frame)) {
-                        log::error!("Error rendering frame: {err}");
-                    }
-                }
-                AppEvent::Key(key) => self.handle_key_event(key),
-                AppEvent::Error(err) => log::error!("{err}"),
+        while !self.cancellation_token.is_cancelled() {
+            while let Ok(event) = event_rx.try_recv() {
+                match event {
+                    AppEvent::Tick => (),
+                    AppEvent::Key(key) => self.handle_key_event(key),
+                    AppEvent::Error(err) => log::error!("{err}"),
+                    _ => (),
+                } 
             }
+
+            let now = std::time::Instant::now();
+            if let Err(err) = terminal.draw(|frame| self.render(frame)) {
+                log::error!("Error rendering frame: {err}");
+            }
+            let elapsed = now.elapsed().as_millis();
+            log::info!("draw: {elapsed}ms {}fps", 1000 / elapsed);
         }
 
         tui::restore()?;
