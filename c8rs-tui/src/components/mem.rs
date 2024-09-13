@@ -109,12 +109,11 @@ impl Component for MemoryComponent {
 
         match self.view {
             View::Hex => f.render_widget(
-                // MemoryHexView {
-                //     offset: self.offset,
-                //     cpu,
-                //     mem,
-                // },
-                self.render_hex(cpu, mem, block_area.height),
+                MemoryHexView {
+                    offset: self.offset,
+                    cpu,
+                    mem,
+                },
                 block_area,
             ),
             View::Sprite => {
@@ -266,62 +265,5 @@ impl Widget for MemoryHexView<'_> {
                 };
             }
         }
-    }
-}
-
-impl MemoryComponent {
-    fn render_hex(&self, cpu: &Cpu, mem: &Memory, height: u16) -> Text {
-        let Cpu { pc, sp, i, .. } = cpu;
-        let lines = (0..height).map(|row| {
-            if row == 0 {
-                return Line::from(
-                    "             0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F".to_string(),
-                );
-            }
-
-            let offset = self.offset + ((row - 1) * 16);
-            if offset > 0xFF0 {
-                return Line::default();
-            }
-
-            let mut spans = Vec::with_capacity(19);
-
-            let row_has_pc = offset == *pc & 0xFF0;
-            let row_has_sp = offset == *sp & 0xFF0;
-            let row_has_i = offset == *i & 0xFF0;
-
-            spans.push(if row_has_pc {
-                Span::styled("PC ", Style::default().fg(Color::Yellow))
-            } else if row_has_sp {
-                Span::styled("SP ", Style::default().fg(Color::Magenta))
-            } else if row_has_i {
-                Span::styled(" I ", Style::default().fg(Color::Green))
-            } else {
-                Span::raw("   ")
-            });
-
-            spans.push(Span::from(format!("|{offset:#06X}|")));
-
-            for byte_offset in 0..16 {
-                let addr = offset + byte_offset;
-                let byte = mem.read_u8(addr);
-
-                let style = if addr.saturating_sub(1) == *pc || addr == *pc {
-                    Style::default().fg(Color::Yellow)
-                } else if addr.saturating_sub(1) == *sp || addr == *sp {
-                    Style::default().fg(Color::Magenta)
-                } else if addr.saturating_sub(1) == *i || addr == *i {
-                    Style::default().fg(Color::Green)
-                } else {
-                    Style::default()
-                };
-
-                spans.push(Span::styled(format!(" {byte:02X}"), style));
-            }
-
-            Line::from(spans)
-        });
-
-        Text::from_iter(lines)
     }
 }
