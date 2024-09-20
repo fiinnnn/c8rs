@@ -1,8 +1,10 @@
-use c8rs_core::{Cpu, DebugCommand, EmulatorCommand, Instruction};
+use std::collections::HashSet;
+
+use c8rs_core::{Cpu, DebugCommand, EmulatorCommand, Instruction, Memory};
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     prelude::*,
-    widgets::{block, Block, Paragraph},
+    widgets::{block, Block},
 };
 
 use crate::app::AppState;
@@ -96,62 +98,22 @@ impl Component for DisassemblyComponent {
             .border_style(border_style);
         let block_area = outer_block.inner(area);
 
-        let Cpu { pc, .. } = state.controller.cpu();
-        let mem = state.controller.memory();
-        let breakpoints = state.controller.breakpoints();
+        let cpu = state.controller.cpu();
 
         if self.mode == Mode::Follow {
-            self.addr = *pc;
+            self.addr = cpu.pc;
         }
 
-        let format_addr = |addr| {
-            let word = mem.read_u16(addr);
-            let high_byte = (word >> 8) as u8;
-            let low_byte = (word & 0xFF) as u8;
-            let inst = Instruction::parse(word);
-
-            let line_style = if addr == *pc {
-                Style::new().black().on_green()
-            } else if self.mode == Mode::Manual && addr == self.addr {
-                Style::new().black().on_blue()
-            } else {
-                Style::default()
-            };
-
-            let breakpoint = if breakpoints.contains(&addr) {
-                "b"
-            } else {
-                " "
-            };
-
-            let mut lines = vec![
-                Span::from(format!("{breakpoint} ")),
-                Span::from(format!("{addr:#06X}:")),
-                Span::from("  "),
-                Span::from(format!("{high_byte:02X}")),
-                Span::from(" "),
-                Span::from(format!("{low_byte:02X}")),
-                Span::from("  "),
-                Span::from(format!("{inst}")),
-            ];
-
-            let content_len = lines.iter().fold(0, |len, l| len + l.content.len());
-            if block_area.width as usize > content_len {
-                lines.push(Span::from(
-                    " ".repeat(block_area.width as usize - content_len),
-                ));
-            }
-
-            Line::from(lines).style(line_style)
-        };
-
-        let start_addr = (self.addr.saturating_sub(block_area.height))
-            .min(0x1000 - block_area.height * 2)
-            & 0xFFFE;
-        let end_addr = (start_addr + block_area.height * 2) & 0xFFFE;
-        let lines = (start_addr..end_addr).step_by(2).map(format_addr);
-
-        f.render_widget(Paragraph::new(Text::from_iter(lines)), block_area);
+        f.render_widget(
+            DisassemblyWidget {
+                cpu,
+                mem: state.controller.memory(),
+                addr: self.addr,
+                mode: self.mode,
+                breakpoints: state.controller.breakpoints(),
+            },
+            block_area,
+        );
 
         f.render_widget(
             outer_block.title(
@@ -180,6 +142,75 @@ impl DisassemblyComponent {
             Mode::Follow => "[addr: PC]".to_string(),
             Mode::Manual => format!("[addr: {:#06X}]", self.addr),
             Mode::GotoInput => format!("[goto: {}]", self.input),
+        }
+    }
+}
+
+struct DisassemblyWidget<'a> {
+    cpu: &'a Cpu,
+    mem: &'a Memory,
+    addr: u16,
+    mode: Mode,
+    breakpoints: &'a HashSet<u16>,
+}
+
+impl Widget for DisassemblyWidget<'_> {
+    fn render(self, area: Rect, buf: &mut Buffer)
+    where
+        Self: Sized,
+    {
+        let Cpu { pc, .. } = self.cpu;
+
+        let start_addr =
+            (self.addr.saturating_sub(area.height)).min(0x1000 - area.height * 2) & 0xFFFE;
+        let end_addr = (start_addr + area.height * 2) & 0xFFFE;
+
+        for (row, addr) in (start_addr..end_addr).step_by(2).enumerate() {
+            let word = self.mem.read_u16(addr);
+
+            let high_byte = (word >> 8) as u8;
+            let low_byte = (word & 0xFF) as u8;
+
+            let inst = Instruction::parse(word);
+
+            let line_style = if addr == *pc {
+                Style::new().black().on_green()
+            } else if self.mode == Mode::Manual && addr == self.addr {
+                Style::new().black().on_blue()
+            } else {
+                Style::default()
+            };
+
+            let y = area.y + row as u16;
+
+            buf.set_style(Rect::new(area.x, y, area.width, 1), line_style);
+
+            buf.set_span(
+                area.x + 2,
+                y,
+                &Span::from(format!("{addr:#06X}")),
+                area.width,
+            );
+            buf.set_span(
+                area.x + 9,
+                y,
+                &Span::from(format!("{high_byte:02X}")),
+                area.width,
+            );
+            buf.set_span(
+                area.x + 12,
+                y,
+                &Span::from(format!("{low_byte:02X}")),
+                area.width,
+            );
+            buf.set_span(area.x + 15, y, &Span::from(format!("{inst}")), area.width);
+
+            if self.breakpoints.contains(&addr) {
+                if let Some(cell) = buf.cell_mut(Position { x: area.x, y }) {
+                    cell.set_symbol("●");
+                    cell.set_fg(Color::Red);
+                }
+            }
         }
     }
 }

@@ -110,7 +110,7 @@ impl App {
                     AppEvent::Key(key) => self.handle_key_event(key),
                     AppEvent::Error(err) => log::error!("{err}"),
                     _ => (),
-                } 
+                }
             }
 
             let now = std::time::Instant::now();

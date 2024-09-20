@@ -32,14 +32,13 @@ impl Component for DisplayComponent {
         let block_area = outer_block.inner(area);
 
         let display = state.controller.display();
-        let (width, height) = display.get_dimensions();
+        let (width, _) = display.get_dimensions();
         let pixels = display.get_pixels();
 
         f.render_widget(
             DisplayWidget {
                 pixels: &pixels,
                 width,
-                height,
             },
             block_area,
         );
@@ -68,7 +67,6 @@ impl Component for DisplayComponent {
 struct DisplayWidget<'a> {
     pixels: &'a [bool],
     width: usize,
-    height: usize,
 }
 
 impl Widget for DisplayWidget<'_> {

@@ -1,7 +1,7 @@
-use c8rs_core::{Cpu, EmulatorState};
+use c8rs_core::{Cpu, EmulatorState, Memory};
 use ratatui::{
     prelude::*,
-    widgets::{block, Block, Borders, Padding, Paragraph},
+    widgets::{block, Block},
 };
 
 use crate::app::AppState;
@@ -40,8 +40,11 @@ impl Component for CpuComponent {
             unreachable!()
         };
 
-        f.render_widget(RegisterWidget { state }, reg_area);
-        f.render_widget(StackWidget { state }, stack_area);
+        let cpu = state.controller.cpu();
+        let mem = state.controller.memory();
+
+        f.render_widget(RegisterWidget { cpu }, reg_area);
+        f.render_widget(StackWidget { cpu, mem }, stack_area);
 
         f.render_widget(
             outer_block.title(
@@ -79,7 +82,7 @@ impl CpuComponent {
 }
 
 struct RegisterWidget<'a> {
-    state: &'a AppState,
+    cpu: &'a Cpu,
 }
 
 impl Widget for RegisterWidget<'_> {
@@ -87,52 +90,67 @@ impl Widget for RegisterWidget<'_> {
     where
         Self: Sized,
     {
-        let block = Block::new()
-            .title("registers")
-            .title_style(Style::new().bold().underlined())
-            .borders(Borders::RIGHT);
-        let block_area = block.inner(area);
-        block.render(area, buf);
-
         let Cpu {
-            registers,
-            delay_timer,
-            sound_timer,
             pc,
             sp,
             i,
+            delay_timer,
+            sound_timer,
+            registers,
             ..
-        } = self.state.controller.cpu();
+        } = self.cpu;
 
-        let mut lines = vec![
-            Line::from(format!("PC: {pc:#06X}")),
-            Line::from(format!("SP: {sp:#06X}")),
-            Line::from(format!("I:  {i:#06X}")),
-            Line::from(""),
-            Line::from(format!("DT: {delay_timer:#04X} ({delay_timer:03})")),
-            Line::from(format!("ST: {sound_timer:#04X} ({sound_timer:03})")),
-            Line::from(""),
-        ];
+        buf.set_line(
+            area.x,
+            area.y,
+            &Line::from(format!("PC: {pc:#06X}")),
+            area.width,
+        );
+        buf.set_line(
+            area.x,
+            area.y + 1,
+            &Line::from(format!("SP: {sp:#06X}")),
+            area.width,
+        );
+        buf.set_line(
+            area.x,
+            area.y + 2,
+            &Line::from(format!("I:  {i:#06X}")),
+            area.width,
+        );
 
-        let fmt_reg = |i, val| format!("V{i:X}: {val:#04X} ({val:03})");
-        lines.extend((0x0..0x8usize).map(|i| {
-            let j = i + 8;
-            let val_i = registers[i];
-            let val_j = registers[j];
+        buf.set_line(
+            area.x,
+            area.y + 4,
+            &Line::from(format!("DT: {delay_timer:#04X} ({delay_timer:03})")),
+            area.width,
+        );
+        buf.set_line(
+            area.x,
+            area.y + 5,
+            &Line::from(format!("ST: {sound_timer:#04X} ({sound_timer:03})")),
+            area.width,
+        );
 
-            Line::from(vec![
-                Span::from(fmt_reg(i, val_i)),
-                Span::from(" ".repeat(8)),
-                Span::from(fmt_reg(j, val_j)),
-            ])
-        }));
+        for col in 0..2 {
+            for row in 0..8 {
+                let reg = row + col * 8;
+                let val = registers[reg];
 
-        Paragraph::new(Text::from(lines)).render(block_area, buf);
+                buf.set_span(
+                    area.x + (col as u16 * 22),
+                    area.y + 7 + row as u16,
+                    &Span::from(format!("V{reg:X}: {val:#04X} ({val:03})")),
+                    area.width,
+                );
+            }
+        }
     }
 }
 
 struct StackWidget<'a> {
-    state: &'a AppState,
+    cpu: &'a Cpu,
+    mem: &'a Memory,
 }
 
 impl Widget for StackWidget<'_> {
@@ -140,35 +158,30 @@ impl Widget for StackWidget<'_> {
     where
         Self: Sized,
     {
-        let block = Block::new()
-            .title("stack")
-            .title_style(Style::new().bold().underlined())
-            .padding(Padding::top(2));
-        let block_area = block.inner(area);
-        block.render(area, buf);
+        let Cpu { sp, .. } = self.cpu;
 
-        let Cpu { sp, .. } = self.state.controller.cpu();
+        let stack_len = 0x1FEu16.saturating_sub(*sp) / 2;
+        buf.set_line(
+            area.x,
+            area.y,
+            &Line::from(format!("stack    len: {stack_len}")),
+            area.width,
+        );
 
-        let mem = self.state.controller.memory();
+        let start_addr = sp.saturating_sub(area.height).min(0x0202 - area.height * 2) & 0xFFFE;
+        let end_addr = (start_addr + area.height * 2) & 0xFFFE;
 
-        let fmt_addr = |addr| {
-            let val = mem.read_u16(addr);
-            format!(
-                "{}|{addr:#06X}| {val:#06X}",
-                if *sp == addr { "SP->" } else { "    " }
-            )
-        };
-
-        let lines = (0..8).map(|row| {
-            let addr = 0x1E0 + (row as u16 * 2);
-            let addr_2 = addr + 16;
-            Line::from(vec![
-                Span::from(fmt_addr(addr)),
-                Span::raw("  │ "),
-                Span::from(fmt_addr(addr_2)),
-            ])
-        });
-
-        Paragraph::new(Text::from_iter(lines)).render(block_area, buf);
+        for (i, addr) in (start_addr..end_addr).step_by(2).enumerate() {
+            let val = self.mem.read_u16(addr);
+            buf.set_line(
+                area.x,
+                area.y + 1 + i as u16,
+                &Line::from(format!(
+                    "{}|{addr:#06X}| {val:#06X}",
+                    if *sp == addr { "SP->" } else { "    " }
+                )),
+                area.width,
+            );
+        }
     }
 }
